@@ -65,7 +65,7 @@ fun TestScreen(
     val answers = remember { mutableStateMapOf<Int, Int>() }
     var secondsLeft by remember { mutableIntStateOf(durationSeconds) }
     var showConfirm by remember { mutableStateOf(false) }
-    var frozen by remember { mutableStateOf(false) }
+    val frozen = vm.tabFlagged
 
     // Countdown timer
     LaunchedEffect(frozen) {
@@ -83,8 +83,8 @@ fun TestScreen(
     LaunchedEffect(frozen) {
         while (frozen) {
             delay(2000)
-            if (vm.flagStatusForCurrentStudent() == "approved") {
-                frozen = false
+            vm.refreshCurrentFlagStatus { status ->
+                if (status == "approved") vm.clearTabFlag()
             }
         }
     }

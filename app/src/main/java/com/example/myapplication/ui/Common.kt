@@ -1,5 +1,6 @@
 package com.example.myapplication.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,12 +20,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.R
 import com.example.myapplication.Screen
 import com.example.myapplication.ui.theme.ArAccent
 import com.example.myapplication.ui.theme.ArPrimary
@@ -33,7 +37,6 @@ import com.example.myapplication.ui.theme.ArSlate200
 import com.example.myapplication.ui.theme.ArSlate300
 import com.example.myapplication.ui.theme.ArSlate400
 import com.example.myapplication.ui.theme.ArSlate500
-import com.example.myapplication.ui.theme.ArSlate800
 
 @Composable
 fun Modifier.clickableNoRipple(enabled: Boolean = true, onClick: () -> Unit): Modifier {
@@ -63,23 +66,16 @@ fun AppHeader() {
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.White)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ArPrimary),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("AR", color = Color.White, fontWeight = FontWeight.Black, fontSize = 14.sp)
-            }
-            Spacer(Modifier.size(8.dp))
-            Text("AR INFOTEK", fontWeight = FontWeight.Black, fontSize = 18.sp, color = ArSlate800)
-        }
+        Image(
+            painter = painterResource(id = R.drawable.arinfotek_logo),
+            contentDescription = "AR INFOTEK",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.height(44.dp)
+        )
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))

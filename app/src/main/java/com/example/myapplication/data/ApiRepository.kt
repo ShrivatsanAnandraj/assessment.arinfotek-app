@@ -1,7 +1,5 @@
 package com.example.myapplication.data
 
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -79,33 +77,20 @@ class ApiRepository(private val client: ApiClient = ApiClient()) {
     suspend fun createFlag(
         testCode: String,
         studentName: String,
-        studentRegisterId: String,
-        violations: List<Long>
+        studentRegisterId: String
     ) {
         val payload = buildJsonObject {
             put("test_code", testCode)
-            put("student_name", studentName)
             put("student_register_id", studentRegisterId)
+            put("student_name", studentName)
             put("reason", "Tabs changing found")
-            put(
-                "violations",
-                buildJsonArray { violations.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
-            )
         }
         runCatching { client.post("/tabflags", ApiFlagsResponse.serializer(), payload.toString()) }
     }
 
-    suspend fun resolveFlag(
-        testCode: String,
-        studentRegisterId: String,
-        status: String
-    ) {
-        val payload = buildJsonObject {
-            put("test_code", testCode)
-            put("student_register_id", studentRegisterId)
-            put("status", status)
-        }
-        client.post("/tabflags?action=update", ApiFlagsResponse.serializer(), payload.toString())
+    suspend fun resolveFlag(id: Int) {
+        val payload = buildJsonObject { put("id", id) }
+        client.post("/tabflags?action=resolve", ApiFlagsResponse.serializer(), payload.toString())
     }
 
     suspend fun flagStatus(testCode: String, studentRegisterId: String): String {

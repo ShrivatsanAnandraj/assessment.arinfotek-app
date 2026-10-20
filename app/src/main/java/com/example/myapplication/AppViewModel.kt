@@ -55,6 +55,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var generatedTestTitle by mutableStateOf("")
         private set
+    var tabFlagged by mutableStateOf(false)
+        private set
+
+    /** Called by the test screen once the tab-switch dialog has been cleared. */
+    fun clearTabFlag() {
+        tabFlagged = false
+    }
+
+    /** Number of questions fetched for the verified test (for the join card). */
+    val verifiedQuestionCount: Int get() = activeQuestions.size
 
     // ---- Result ----
     var result by mutableStateOf<TestResult?>(null)
@@ -225,6 +235,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.savePapers(papers)
         activePaper = paper
         generatedTestTitle = test.title
+        tabFlagged = false
         screen = Screen.TEST
     }
 
@@ -279,14 +290,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun flagTabViolation() {
         val test = verifiedTest ?: return
-        val now: Long = System.currentTimeMillis()
+        tabFlagged = true
         viewModelScope.launch {
             runCatching {
                 api.createFlag(
                     testCode = test.testCode,
                     studentName = studentName,
-                    studentRegisterId = studentRegisterId,
-                    violations = listOf(now)
+                    studentRegisterId = studentRegisterId
                 )
             }
             runCatching { loadFlags() }
@@ -298,6 +308,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return data.tabFlags.firstOrNull {
             it.testCode == test.testCode && it.studentRegisterId == studentRegisterId
         }?.status ?: "none"
+    }
+
+    /** Polls the API for the live status of the current student's flag. */
+    fun refreshCurrentFlagStatus(onStatus: (String) -> Unit) {
+        val test = verifiedTest ?: run { onStatus("none"); return }
+        viewModelScope.launch {
+            val status = runCatching {
+                api.flagStatus(test.testCode, studentRegisterId)
+            }.getOrNull() ?: flagStatusForCurrentStudent()
+            onStatus(status)
+        }
     }
 
     // ---------------------------------------------------------------
@@ -352,6 +373,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         verifiedTest = null
         activeQuestions = emptyList()
         joinError = ""
+        tabFlagged = false
         screen = Screen.JOIN
     }
 
@@ -441,11 +463,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun approveFlag(id: Int) {
-        val flag = data.tabFlags.firstOrNull { it.id == id } ?: return
         viewModelScope.launch {
-            runCatching {
-                api.resolveFlag(flag.testCode, flag.studentRegisterId, "approved")
-            }
+            runCatching { api.resolveFlag(id) }
             data = data.copy(
                 tabFlags = data.tabFlags.map {
                     if (it.id == id) it.copy(status = "approved", resolvedAt = System.currentTimeMillis()) else it

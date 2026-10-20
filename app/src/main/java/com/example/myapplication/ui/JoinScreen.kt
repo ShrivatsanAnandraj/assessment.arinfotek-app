@@ -69,6 +69,7 @@ fun JoinScreen(
             VerifiedCard(
                 test = verified,
                 name = if (name.isBlank()) vm.studentName else name,
+                questionCount = vm.verifiedQuestionCount,
                 onTakeTest = onStartTest,
                 onTakeSurvey = onStartSurvey,
                 onBack = { vm.resetVerification() }
@@ -117,7 +118,7 @@ fun JoinScreen(
                 )
                 Spacer(Modifier.height(12.dp))
 
-                FieldLabel("Register ID (as per college records)")
+                FieldLabelWithHint("Register ID", "(as per college records)")
                 AppTextField(
                     value = regId,
                     onValueChange = { regId = it },
@@ -130,6 +131,7 @@ fun JoinScreen(
                     value = code,
                     onValueChange = { code = it.uppercase() },
                     placeholder = "e.g. ARPB248",
+                    monoUppercase = true,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Characters,
                         keyboardType = KeyboardType.Text
@@ -177,6 +179,7 @@ fun JoinScreen(
 private fun VerifiedCard(
     test: Test,
     name: String,
+    questionCount: Int,
     onTakeTest: () -> Unit,
     onTakeSurvey: () -> Unit,
     onBack: () -> Unit
@@ -218,7 +221,7 @@ private fun VerifiedCard(
         ChoiceCard(
             icon = "📋",
             title = "Take Test",
-            subtitle = "${test.title} — ${test.durationMinutes} min",
+            subtitle = "${test.title} — $questionCount questions",
             accent = ArPrimary,
             onClick = onTakeTest
         )
@@ -282,12 +285,21 @@ fun FieldLabel(text: String) {
 }
 
 @Composable
+fun FieldLabelWithHint(text: String, hint: String) {
+    Row(modifier = Modifier.padding(bottom = 6.dp)) {
+        Text(text + " ", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = ArSlate600)
+        Text(hint, fontWeight = FontWeight.Normal, fontSize = 13.sp, color = ArSlate400)
+    }
+}
+
+@Composable
 fun AppTextField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    monoUppercase: Boolean = false
 ) {
     OutlinedTextField(
         value = value,
@@ -295,6 +307,11 @@ fun AppTextField(
         placeholder = { Text(placeholder, color = ArSlate400, fontSize = 14.sp) },
         singleLine = singleLine,
         keyboardOptions = keyboardOptions,
+        textStyle = androidx.compose.ui.text.TextStyle(
+            fontFamily = if (monoUppercase) androidx.compose.ui.text.font.FontFamily.Monospace
+            else androidx.compose.ui.text.font.FontFamily.Default,
+            letterSpacing = if (monoUppercase) 1.sp else androidx.compose.ui.unit.TextUnit.Unspecified
+        ),
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
