@@ -107,14 +107,20 @@ fun AssessmentApp(vm: AppViewModel = viewModel()) {
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            if (vm.loading) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = ArPrimary
+                )
+            }
             when (vm.screen) {
                 Screen.JOIN -> JoinScreen(
                     vm = vm,
                     onVerified = {},
                     onStartTest = { vm.startTest() },
                     onStartSurvey = {
-                        if (!vm.openSurveyForCurrentTest()) {
-                            vm.joinError = "No survey available for this test yet."
+                        vm.openSurveyForCurrentTest { ok ->
+                            if (!ok) vm.joinError = "No survey available for this test yet."
                         }
                     }
                 )
@@ -128,8 +134,8 @@ fun AssessmentApp(vm: AppViewModel = viewModel()) {
                             vm = vm,
                             result = result,
                             onTakeSurvey = {
-                                if (!vm.openSurveyForCurrentTest()) {
-                                    vm.joinError = "No survey available for this test yet."
+                                vm.openSurveyForCurrentTest { ok ->
+                                    if (!ok) vm.joinError = "No survey available for this test yet."
                                 }
                             }
                         )

@@ -596,20 +596,21 @@ private fun CreateSurveyView(vm: AppViewModel) {
             Spacer(Modifier.height(12.dp))
         }
         GradientButton(text = "Create Survey") {
-            val error = vm.createSurvey(
+            vm.createSurvey(
                 testCode = testCode,
                 course = course,
                 trainee = trainee,
                 noOfDays = noOfDays.toIntOrNull() ?: 0,
                 templateName = templateName
-            )
-            if (error == null) {
-                message = "Success! Survey created for test code: ${testCode.uppercase()}"
-                messageIsError = false
-                testCode = ""; course = ""; trainee = ""; noOfDays = ""
-            } else {
-                message = "Error: $error"
-                messageIsError = true
+            ) { error ->
+                if (error == null) {
+                    message = "Success! Survey created for test code: ${testCode.uppercase()}"
+                    messageIsError = false
+                    testCode = ""; course = ""; trainee = ""; noOfDays = ""
+                } else {
+                    message = "Error: $error"
+                    messageIsError = true
+                }
             }
         }
         Spacer(Modifier.height(16.dp))

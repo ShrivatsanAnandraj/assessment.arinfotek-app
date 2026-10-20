@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.*
+import kotlinx.coroutines.launch
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -16,9 +18,15 @@ enum class Screen { JOIN, TEST, RESULT, SURVEY, ADMIN }
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = AppRepository(app)
+    private val api = ApiRepository()
 
+    /** Local cache used as an offline fallback. */
     private var data: AppData = repo.load()
+
     private var papers: MutableList<GeneratedPaper> = repo.loadPapers().toMutableList()
+
+    // The questions for the test currently being taken (from the live API).
+    private var activeQuestions: List<Question> = emptyList()
 
     // ---- Navigation / session ----
     var screen by mutableStateOf(Screen.JOIN)
@@ -28,13 +36,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var studentRegisterId by mutableStateOf("")
         private set
 
-    // ---- Verified test info (sync: local, async: remote) ----
+    // ---- Verified test info ----
     var verifiedTest by mutableStateOf<Test?>(null)
         private set
     var verifying by mutableStateOf(false)
         private set
     var joinError by mutableStateOf("")
         internal set
+
+    // ---- Network status ----
+    var loading by mutableStateOf(false)
+        private set
+    var online by mutableStateOf(true)
+        private set
 
     // ---- Active test ----
     var activePaper by mutableStateOf<GeneratedPaper?>(null)
@@ -53,8 +67,76 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Admin ----
     var adminFlags = mutableStateListOf<TabFlag>()
         private set
+    var adminTests = mutableStateListOf<Test>()
+        private set
+    var adminAttempts = mutableStateListOf<Attempt>()
+        private set
+    var adminSurveyResponses = mutableStateListOf<SurveyResponse>()
+        private set
 
-    val templates: List<String> = SurveyTemplates.templates.keys.toList()
+    var templates by mutableStateOf(SurveyTemplates.templates.keys.toList())
+        private set
+
+    init {
+        refreshAll()
+    }
+
+    /** Pulls the latest tests, attempts, surveys and flags from the API. */
+    fun refreshAll() {
+        viewModelScope.launch { refreshAllSuspending() }
+    }
+
+    private suspend fun refreshAllSuspending() {
+        loading = true
+        val ok = runCatching { loadTests() }.isSuccess
+        runCatching { loadAttempts() }
+        runCatching { loadFlags() }
+        runCatching { loadSurveyResponses() }
+        runCatching { loadTemplates() }
+        online = ok
+        loading = false
+    }
+
+    private suspend fun loadTests() {
+        val remote = api.fetchTestsWithQuestions()
+        if (remote.isNotEmpty()) {
+            val tests = remote.map { it.first }
+            val questions = remote.flatMap { it.second }
+            adminTests.clear()
+            adminTests.addAll(tests)
+            data = data.copy(tests = tests, questions = questions)
+            repo.save(data)
+        }
+    }
+
+    private suspend fun loadAttempts() {
+        val remote = api.fetchAttempts()
+        adminAttempts.clear()
+        adminAttempts.addAll(remote)
+        data = data.copy(attempts = remote)
+        repo.save(data)
+    }
+
+    private suspend fun loadFlags() {
+        val remote = api.fetchFlags()
+        adminFlags.clear()
+        adminFlags.addAll(remote.sortedByDescending { it.id })
+        data = data.copy(tabFlags = remote)
+        repo.save(data)
+    }
+
+    private suspend fun loadSurveyResponses() {
+        val remote = api.fetchSurveyResponses()
+        adminSurveyResponses.clear()
+        adminSurveyResponses.addAll(remote)
+        data = data.copy(surveyResponses = remote)
+        repo.save(data)
+    }
+
+    private suspend fun loadTemplates() {
+        val remote = runCatching { api.fetchTemplates() }.getOrNull()
+        if (!remote.isNullOrEmpty()) templates = remote
+    }
 
     // ---------------------------------------------------------------
     // Join / verify
@@ -66,23 +148,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             onVerified(false)
             return
         }
-        verifying = true
         val upper = code.trim().uppercase()
-        val found = data.tests.firstOrNull { it.testCode.equals(upper, ignoreCase = true) }
-        verifying = false
-        if (found == null) {
-            joinError = "Invalid test code"
-            onVerified(false)
-            return
+        viewModelScope.launch {
+            verifying = true
+            val remote = runCatching { api.fetchTestByCode(upper) }.getOrNull()
+            if (remote != null) {
+                val (test, questions) = remote
+                activeQuestions = questions
+                finishVerify(name, regId, test, onVerified)
+                return@launch
+            }
+            // Offline / not found remotely: fall back to the local cache.
+            val cached = data.tests.firstOrNull { it.testCode.equals(upper, ignoreCase = true) }
+            if (cached != null) {
+                activeQuestions = data.questions.filter { it.testId == cached.id }
+                finishVerify(name, regId, cached, onVerified)
+            } else {
+                verifying = false
+                joinError = if (online) "Invalid test code" else "You're offline and this code isn't cached."
+                onVerified(false)
+            }
         }
+    }
+
+    private fun finishVerify(name: String, regId: String, test: Test, onVerified: (Boolean) -> Unit) {
         studentName = name.trim()
         studentRegisterId = regId.trim()
-        verifiedTest = found
+        verifiedTest = test
+        verifying = false
         onVerified(true)
     }
 
     fun resetVerification() {
         verifiedTest = null
+        activeQuestions = emptyList()
         joinError = ""
     }
 
@@ -91,7 +190,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------
     fun startTest() {
         val test = verifiedTest ?: return
-        val qs = data.questions.filter { it.testId == test.id }
+        val qs = activeQuestions.ifEmpty { data.questions.filter { it.testId == test.id } }
         val paperQuestions = qs.mapIndexed { index, q ->
             PaperQuestion(id = index, questionText = q.questionText, options = q.options)
         }
@@ -114,6 +213,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun submitTest(answers: Map<Int, Int>) {
         val paper = activePaper ?: return
+        val test = verifiedTest
+        // Map paper (array-index) answers to DB question ids for the API.
+        val dbAnswers: Map<String, Int> = answers.entries.associate { (idx, choice) ->
+            val qid = activeQuestions.getOrNull(idx)?.id ?: idx
+            qid.toString() to choice
+        }
+        viewModelScope.launch {
+            loading = true
+            val remote = if (test != null) {
+                runCatching {
+                    api.submitAttempt(
+                        testId = test.id,
+                        studentName = studentName,
+                        studentRegisterId = studentRegisterId,
+                        answers = dbAnswers
+                    )
+                }.getOrNull()
+            } else null
+
+            result = remote ?: localScore(paper, answers)
+            loading = false
+            screen = Screen.RESULT
+            runCatching { loadAttempts() }
+        }
+    }
+
+    /** Scores a paper locally (offline fallback). */
+    private fun localScore(paper: GeneratedPaper, answers: Map<Int, Int>): TestResult {
         var score = 0
         val review = paper.questions.mapIndexed { i, q ->
             val correct = paper.answerKey.getOrElse(i) { 0 }
@@ -130,49 +257,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val total = paper.questions.size
         val percentage: Int = if (total > 0) (score * 100f / total).roundToInt() else 0
         val passed = percentage >= 40
-
-        val attempt = Attempt(
-            id = (data.attempts.maxOfOrNull { it.id } ?: 0) + 1,
-            testCode = paper.testCode,
-            studentName = studentName,
-            studentRegisterId = studentRegisterId,
-            score = score,
-            total = total,
-            answers = answers.mapKeys { it.key.toString() }
-        )
-        data = data.copy(attempts = data.attempts + attempt)
-        repo.save(data)
-
-        result = TestResult(score, total, percentage, passed, review)
-        screen = Screen.RESULT
+        return TestResult(score, total, percentage, passed, review)
     }
 
     fun flagTabViolation() {
         val test = verifiedTest ?: return
         val now: Long = System.currentTimeMillis()
-        val existing = data.tabFlags.firstOrNull {
-            it.testCode == test.testCode &&
-                it.studentRegisterId == studentRegisterId &&
-                it.status == "flagged"
+        viewModelScope.launch {
+            runCatching {
+                api.createFlag(
+                    testCode = test.testCode,
+                    studentName = studentName,
+                    studentRegisterId = studentRegisterId,
+                    violations = listOf(now)
+                )
+            }
+            runCatching { loadFlags() }
         }
-        data = if (existing != null) {
-            val updated = existing.copy(
-                violationCount = existing.violationCount + 1,
-                violations = existing.violations + now
-            )
-            data.copy(tabFlags = data.tabFlags.map { if (it.id == existing.id) updated else it })
-        } else {
-            val flag = TabFlag(
-                id = (data.tabFlags.maxOfOrNull { it.id } ?: 0) + 1,
-                testCode = test.testCode,
-                studentRegisterId = studentRegisterId,
-                studentName = studentName,
-                violations = listOf(now)
-            )
-            data.copy(tabFlags = data.tabFlags + flag)
-        }
-        repo.save(data)
-        refreshFlags()
     }
 
     fun flagStatusForCurrentStudent(): String {
@@ -185,33 +286,46 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------
     // Survey
     // ---------------------------------------------------------------
-    fun openSurveyForCurrentTest(): Boolean {
-        val test = verifiedTest ?: return false
-        val survey = data.surveys.firstOrNull {
-            it.testCode.equals(test.testCode, ignoreCase = true)
+    fun openSurveyForCurrentTest(onResult: (Boolean) -> Unit) {
+        val test = verifiedTest ?: run { onResult(false); return }
+        viewModelScope.launch {
+            loading = true
+            val remote = runCatching { api.fetchSurveys() }.getOrNull()
+            if (!remote.isNullOrEmpty()) {
+                data = data.copy(surveys = remote)
+                repo.save(data)
+            }
+            val survey = (remote ?: data.surveys).firstOrNull {
+                it.testCode.equals(test.testCode, ignoreCase = true)
+            }
+            loading = false
+            if (survey == null) {
+                onResult(false)
+            } else {
+                activeSurvey = survey
+                screen = Screen.SURVEY
+                onResult(true)
+            }
         }
-        if (survey == null) return false
-        activeSurvey = survey
-        screen = Screen.SURVEY
-        return true
     }
 
-    fun submitSurvey(answers: Map<Int, String>) {
-        val survey = activeSurvey ?: return
-        val response = SurveyResponse(
-            id = (data.surveyResponses.maxOfOrNull { it.id } ?: 0) + 1,
-            surveyId = survey.id,
-            studentName = studentName,
-            studentRegisterId = studentRegisterId,
-            testCode = survey.testCode,
-            answers = answers.mapKeys { it.key.toString() },
-            questions = survey.questions,
-            course = survey.course,
-            trainee = survey.trainee,
-            templateName = survey.templateName
-        )
-        data = data.copy(surveyResponses = data.surveyResponses + response)
-        repo.save(data)
+    fun submitSurvey(answers: Map<Int, String>, onDone: () -> Unit) {
+        val survey = activeSurvey ?: run { onDone(); return }
+        viewModelScope.launch {
+            loading = true
+            runCatching {
+                api.submitSurveyResponse(
+                    surveyId = survey.id,
+                    studentName = studentName,
+                    studentRegisterId = studentRegisterId,
+                    testCode = survey.testCode,
+                    answers = answers.mapKeys { it.key.toString() }
+                )
+            }
+            loading = false
+            runCatching { loadSurveyResponses() }
+            onDone()
+        }
     }
 
     fun finishSession() {
@@ -219,19 +333,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         activePaper = null
         result = null
         verifiedTest = null
+        activeQuestions = emptyList()
         joinError = ""
         screen = Screen.JOIN
     }
 
     fun openAdmin() {
-        refreshFlags()
         screen = Screen.ADMIN
+        refreshAll()
     }
 
     // ---------------------------------------------------------------
     // Admin: tests & questions
     // ---------------------------------------------------------------
-    fun allTests(): List<Test> = data.tests
+    fun allTests(): List<Test> = adminTests.ifEmpty { data.tests }
 
     fun questionsForTest(testId: Int): List<Question> =
         data.questions.filter { it.testId == testId }
@@ -248,10 +363,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     ): String? {
         if (title.isBlank() || testCode.isBlank()) return "Test title and code are required."
         val upper = testCode.trim().uppercase()
-        if (data.tests.any { it.testCode.equals(upper, ignoreCase = true) }) {
+        if (allTests().any { it.testCode.equals(upper, ignoreCase = true) }) {
             return "Test code already exists"
         }
-        val newId = (data.tests.maxOfOrNull { it.id } ?: 0) + 1
+        val newId = (allTests().maxOfOrNull { it.id } ?: 0) + 1
         val newTest = Test(
             id = newId,
             title = title.trim(),
@@ -262,23 +377,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             testCode = upper,
             durationMinutes = duration
         )
-        var qId = (data.questions.maxOfOrNull { it.id } ?: 0) + 1
-        val newQuestions = questions.map {
-            Question(
-                id = qId++,
-                testId = newId,
-                questionText = it.questionText,
-                options = it.options,
-                correctAnswer = it.correctAnswer
-            )
-        }
-        data = data.copy(tests = data.tests + newTest, questions = data.questions + newQuestions)
+        // Persist locally so the app is immediately usable even if the
+        // remote admin endpoint is read-only.
+        data = data.copy(tests = data.tests + newTest, questions = data.questions + questions)
         repo.save(data)
+        adminTests.add(newTest)
         return null
     }
 
     fun deleteTest(testCode: String) {
-        val test = data.tests.firstOrNull { it.testCode.equals(testCode, ignoreCase = true) } ?: return
+        val test = allTests().firstOrNull { it.testCode.equals(testCode, ignoreCase = true) } ?: return
         data = data.copy(
             tests = data.tests.filter { it.id != test.id },
             questions = data.questions.filter { it.testId != test.id },
@@ -287,39 +395,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             surveyResponses = data.surveyResponses.filter { !it.testCode.equals(testCode, ignoreCase = true) }
         )
         repo.save(data)
+        adminTests.removeAll { it.id == test.id }
     }
 
     // ---------------------------------------------------------------
     // Admin: scores / attempts
     // ---------------------------------------------------------------
-    fun allAttempts(): List<Attempt> = data.attempts.sortedByDescending { it.submittedAt }
+    fun allAttempts(): List<Attempt> =
+        (adminAttempts.ifEmpty { data.attempts }).sortedByDescending { it.submittedAt }
 
     fun deleteAttempt(id: Int) {
         data = data.copy(attempts = data.attempts.filter { it.id != id })
         repo.save(data)
+        adminAttempts.removeAll { it.id == id }
     }
 
     fun deleteAllAttempts() {
         data = data.copy(attempts = emptyList())
         repo.save(data)
+        adminAttempts.clear()
     }
 
     // ---------------------------------------------------------------
     // Admin: tab flags
     // ---------------------------------------------------------------
     fun refreshFlags() {
-        adminFlags.clear()
-        adminFlags.addAll(data.tabFlags.filter { it.status == "flagged" }.sortedByDescending { it.id })
+        viewModelScope.launch { runCatching { loadFlags() } }
     }
 
     fun approveFlag(id: Int) {
-        data = data.copy(
-            tabFlags = data.tabFlags.map {
-                if (it.id == id) it.copy(status = "approved", resolvedAt = System.currentTimeMillis()) else it
+        val flag = data.tabFlags.firstOrNull { it.id == id } ?: return
+        viewModelScope.launch {
+            runCatching {
+                api.resolveFlag(flag.testCode, flag.studentRegisterId, "approved")
             }
-        )
-        repo.save(data)
-        refreshFlags()
+            data = data.copy(
+                tabFlags = data.tabFlags.map {
+                    if (it.id == id) it.copy(status = "approved", resolvedAt = System.currentTimeMillis()) else it
+                }
+            )
+            repo.save(data)
+            adminFlags.removeAll { it.id == id }
+            runCatching { loadFlags() }
+        }
     }
 
     // ---------------------------------------------------------------
@@ -330,33 +448,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         course: String,
         trainee: String,
         noOfDays: Int,
-        templateName: String
-    ): String? {
+        templateName: String,
+        onResult: (String?) -> Unit
+    ) {
         if (testCode.isBlank() || course.isBlank() || trainee.isBlank() || noOfDays <= 0) {
-            return "All fields are required."
+            onResult("All fields are required.")
+            return
         }
-        val template = SurveyTemplates.templates[templateName]
-            ?: return "Please select a valid template."
-        val survey = Survey(
-            id = (data.surveys.maxOfOrNull { it.id } ?: 0) + 1,
-            testCode = testCode.trim().uppercase(),
-            course = course.trim(),
-            trainee = trainee.trim(),
-            noOfDays = noOfDays,
-            templateName = templateName,
-            questions = template.questions
-        )
-        data = data.copy(surveys = data.surveys + survey)
-        repo.save(data)
-        return null
+        viewModelScope.launch {
+            loading = true
+            val remote = runCatching {
+                api.createSurvey(testCode.trim().uppercase(), course.trim(), trainee.trim(), noOfDays, templateName)
+            }.getOrNull()
+            loading = false
+            if (remote != null) {
+                data = data.copy(surveys = data.surveys + remote)
+                repo.save(data)
+                onResult(null)
+                return@launch
+            }
+            // Offline fallback: build the survey from a bundled template.
+            val template = SurveyTemplates.templates[templateName]
+            if (template == null) {
+                onResult("Please select a valid template.")
+                return@launch
+            }
+            val survey = Survey(
+                id = (data.surveys.maxOfOrNull { it.id } ?: 0) + 1,
+                testCode = testCode.trim().uppercase(),
+                course = course.trim(),
+                trainee = trainee.trim(),
+                noOfDays = noOfDays,
+                templateName = templateName,
+                questions = template.questions
+            )
+            data = data.copy(surveys = data.surveys + survey)
+            repo.save(data)
+            onResult(null)
+        }
     }
 
     fun surveyResponses(): List<SurveyResponse> =
-        data.surveyResponses.sortedByDescending { it.submittedAt }
+        (adminSurveyResponses.ifEmpty { data.surveyResponses }).sortedByDescending { it.submittedAt }
 
     fun deleteSurveyResponse(id: Int) {
         data = data.copy(surveyResponses = data.surveyResponses.filter { it.id != id })
         repo.save(data)
+        adminSurveyResponses.removeAll { it.id == id }
     }
 
     fun deleteSurveyResponsesByTest(testCode: String) {
@@ -364,11 +502,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             !it.testCode.equals(testCode, ignoreCase = true)
         })
         repo.save(data)
+        adminSurveyResponses.removeAll { it.testCode.equals(testCode, ignoreCase = true) }
     }
 
     fun deleteAllSurveyResponses() {
         data = data.copy(surveyResponses = emptyList())
         repo.save(data)
+        adminSurveyResponses.clear()
     }
 
     fun templateQuestions(templateName: String): List<SurveyQuestion> =
@@ -378,7 +518,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // Admin: feedback data analysis
     // ---------------------------------------------------------------
     fun analyze(testCode: String): DataAnalysis {
-        val responses = data.surveyResponses.filter {
+        val responses = surveyResponses().filter {
             it.testCode.equals(testCode, ignoreCase = true)
         }
         if (responses.isEmpty()) return DataAnalysis(error = "No responses found.")
@@ -433,5 +573,3 @@ data class DataAnalysis(
     val overallSentiment: String = "",
     val error: String? = null
 )
-
-

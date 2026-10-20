@@ -232,7 +232,7 @@ fun SurveyScreen(
                         text = "Submit Survey",
                         modifier = Modifier.width(170.dp)
                     ) {
-                        vm.submitSurvey(answers.toMap())
+                        vm.submitSurvey(answers.toMap()) { }
                         submitted = true
                     }
                 } else {

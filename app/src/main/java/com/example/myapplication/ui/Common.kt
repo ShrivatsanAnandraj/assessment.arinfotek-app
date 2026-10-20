@@ -29,6 +29,7 @@ import com.example.myapplication.ui.theme.ArAccent
 import com.example.myapplication.ui.theme.ArPrimary
 import com.example.myapplication.ui.theme.ArSlate100
 import com.example.myapplication.ui.theme.ArSlate200
+import com.example.myapplication.ui.theme.ArSlate300
 import com.example.myapplication.ui.theme.ArSlate400
 import com.example.myapplication.ui.theme.ArSlate500
 import com.example.myapplication.ui.theme.ArSlate800
@@ -101,29 +102,62 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(ArPrimary)
-            .padding(horizontal = 20.dp, vertical = 24.dp)
+            .padding(horizontal = 24.dp, vertical = 28.dp)
     ) {
-        Text("AR INFOTEK", color = Color.White, fontWeight = FontWeight.Black, fontSize = 20.sp)
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Practical, mentor-led online IT training to accelerate your career.",
-            color = Color(0xFFCBD5E1),
-            fontSize = 12.sp
+        // Brand column
+        Column {
+            Text("AR INFOTEK", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Practical, mentor-led online IT training to accelerate your career.",
+                color = ArSlate300,
+                fontSize = 13.sp
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // Programs + Company side by side
+        Row(modifier = Modifier.fillMaxWidth()) {
+            FooterSection(
+                title = "Programs",
+                items = listOf("AWS Architect", "Data Science", "DevOps"),
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.size(16.dp))
+            FooterSection(
+                title = "Company",
+                items = listOf("Why Us", "Internship", "Testimonials"),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        // Legal
+        FooterSection(
+            title = "Legal",
+            items = listOf("Terms", "Privacy"),
+            modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(16.dp))
+
+        Spacer(Modifier.height(24.dp))
+
+        // Bottom bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(Color.White.copy(alpha = 0.15f))
+                .background(Color.White.copy(alpha = 0.1f))
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(16.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("© 2025 AR INFOTEK – All rights reserved.", color = ArSlate400, fontSize = 11.sp)
+            Text("© 2025 AR INFOTEK - All rights reserved.", color = ArSlate400, fontSize = 11.sp)
+            Spacer(Modifier.size(16.dp))
             Text(
                 text = if (screen == Screen.ADMIN) "Back to Test" else "Admin",
                 color = Color(0xFF7DD3FC),
@@ -132,8 +166,19 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .clickableNoRipple(onClick = onAdminClick)
-                    .padding(4.dp)
+                    .padding(2.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun FooterSection(title: String, items: List<String>, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(title, color = ArAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Spacer(Modifier.height(10.dp))
+        items.forEach { item ->
+            Text(item, color = ArSlate200, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
         }
     }
 }
