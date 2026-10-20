@@ -88,18 +88,7 @@ fun AssessmentApp(vm: AppViewModel = viewModel()) {
 
     Scaffold(
         containerColor = ArSlate50,
-        topBar = { AppHeader() },
-        bottomBar = {
-            AppFooter(screen = vm.screen) {
-                if (vm.screen == Screen.ADMIN) {
-                    vm.finishSession()
-                } else {
-                    showAdminAuth = true
-                    adminPassword = ""
-                    adminError = ""
-                }
-            }
-        }
+        topBar = { AppHeader() }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -154,6 +143,16 @@ fun AssessmentApp(vm: AppViewModel = viewModel()) {
                 Screen.ADMIN -> AdminPanel(vm = vm)
             }
             Spacer(Modifier.size(16.dp))
+
+            AppFooter(screen = vm.screen) {
+                if (vm.screen == Screen.ADMIN) {
+                    vm.finishSession()
+                } else {
+                    showAdminAuth = true
+                    adminPassword = ""
+                    adminError = ""
+                }
+            }
         }
     }
 

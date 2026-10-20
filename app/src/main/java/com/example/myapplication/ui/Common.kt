@@ -99,12 +99,12 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(ArPrimary)
-            .padding(horizontal = 24.dp, vertical = 32.dp)
+            .padding(horizontal = 24.dp, vertical = 48.dp)
     ) {
         // Brand column
         Column {
-            Text("AR INFOTEK", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
-            Spacer(Modifier.height(12.dp))
+            Text("AR INFOTEK", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
+            Spacer(Modifier.height(16.dp))
             Text(
                 "Practical, mentor-led online IT training to accelerate your career.",
                 color = ArSlate300,
@@ -113,23 +113,23 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
             )
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(32.dp))
         FooterSection(
             title = "Programs",
             items = listOf("AWS Architect", "Data Science", "DevOps")
         )
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(32.dp))
         FooterSection(
             title = "Company",
             items = listOf("Why Us", "Internship", "Testimonials")
         )
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(32.dp))
         FooterSection(
             title = "Legal",
             items = listOf("Terms", "Privacy")
         )
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(48.dp))
 
         // Bottom bar
         Box(
@@ -164,7 +164,7 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
 private fun FooterSection(title: String, items: List<String>, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Text(title, color = ArAccent, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
         items.forEach { item ->
             Text(
                 item,
