@@ -58,6 +58,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var tabFlagged by mutableStateOf(false)
         private set
 
+    /** Questions parsed from an Excel import, consumed by the Create Test form. */
+    var importedQuestions by mutableStateOf<List<Question>?>(null)
+        private set
+
+    fun storeImportedQuestions(questions: List<Question>) {
+        importedQuestions = questions
+    }
+
+    fun consumeImportedQuestions(): List<Question>? {
+        val q = importedQuestions
+        importedQuestions = null
+        return q
+    }
+
     /** Called by the test screen once the tab-switch dialog has been cleared. */
     fun clearTabFlag() {
         tabFlagged = false

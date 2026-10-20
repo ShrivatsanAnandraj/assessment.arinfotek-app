@@ -86,7 +86,7 @@ fun ResultScreen(
                 Box(modifier = Modifier.width(1.dp).height(34.dp).background(ArSlate200))
                 ScoreStat("${result.total - result.score}", "Incorrect", Color(0xFFF87171))
                 Box(modifier = Modifier.width(1.dp).height(34.dp).background(ArSlate200))
-                ScoreStat("${result.total}", "Total", ArSlate500)
+                ScoreStat("${result.total}", "Total", Color(0xFF475569))
             }
             Spacer(Modifier.height(16.dp))
             Box(
@@ -188,9 +188,16 @@ fun ResultScreen(
         }
 
         Spacer(Modifier.height(16.dp))
-        GradientButton(text = "Take Survey", onClick = onTakeSurvey)
-        Spacer(Modifier.height(8.dp))
-        OutlineButton(text = "Back to Home", modifier = Modifier.fillMaxWidth(), onClick = { vm.finishSession() })
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            GradientButton(
+                text = "Take Survey",
+                modifier = Modifier.width(200.dp),
+                onClick = onTakeSurvey
+            )
+        }
     }
 }
 

@@ -1,5 +1,10 @@
 package com.example.myapplication.ui
 
+import android.content.ContentValues
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.AppViewModel
+import com.example.myapplication.data.ExcelQuestions
 import com.example.myapplication.data.Question
 import com.example.myapplication.data.SurveyResponse
 import com.example.myapplication.data.TabFlag
@@ -56,6 +62,7 @@ import com.example.myapplication.ui.theme.ArRedLight
 private enum class AdminView(val title: String, val icon: String) {
     MENU("Admin Panel", "⚙"),
     CREATE_TEST("Create Test", "➕"),
+    IMPORT_EXCEL("Import Questions from Excel", "📥"),
     VIEW_QUESTIONS("View Questions", "❓"),
     SCORES("Scores", "🏆"),
     FLAGS("Flagged", "🚩"),
@@ -78,7 +85,8 @@ fun AdminPanel(vm: AppViewModel) {
         }
         when (view) {
             AdminView.MENU -> AdminMenu(onSelect = { view = it })
-            AdminView.CREATE_TEST -> CreateTestView(vm)
+            AdminView.CREATE_TEST -> CreateTestView(vm, onImported = { view = AdminView.CREATE_TEST })
+            AdminView.IMPORT_EXCEL -> ImportExcelView(vm, onGoToCreate = { view = AdminView.CREATE_TEST })
             AdminView.VIEW_QUESTIONS -> ViewQuestionsView(vm)
             AdminView.SCORES -> ScoresView(vm)
             AdminView.FLAGS -> FlagsView(vm)
@@ -135,6 +143,7 @@ private data class AdminMenuItem(val view: AdminView, val subtitle: String)
 
 private val AdminMenuItems = listOf(
     AdminMenuItem(AdminView.CREATE_TEST, "Create a new MCQ test with questions"),
+    AdminMenuItem(AdminView.IMPORT_EXCEL, "Upload questions from an Excel file"),
     AdminMenuItem(AdminView.VIEW_QUESTIONS, "Browse questions of existing tests"),
     AdminMenuItem(AdminView.SCORES, "View all student attempts and scores"),
     AdminMenuItem(AdminView.FLAGS, "Approve or review tab-switch violations"),
@@ -158,7 +167,7 @@ private fun SectionCard(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun CreateTestView(vm: AppViewModel) {
+private fun CreateTestView(vm: AppViewModel, onImported: () -> Unit = {}) {
     var title by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var duration by remember { mutableStateOf("30") }
@@ -170,6 +179,15 @@ private fun CreateTestView(vm: AppViewModel) {
     var messageIsError by remember { mutableStateOf(false) }
 
     val questions = remember { mutableStateListOf(EditableQuestion()) }
+
+    LaunchedEffect(Unit) {
+        vm.consumeImportedQuestions()?.let { imported ->
+            questions.clear()
+            imported.forEach { q -> questions.add(EditableQuestion.from(q)) }
+            message = "Imported ${imported.size} questions from Excel."
+            messageIsError = false
+        }
+    }
 
     Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         SectionCard(title = "Create Test") {
@@ -320,10 +338,140 @@ private fun validateQuestions(questions: List<EditableQuestion>): String? {
     return null
 }
 
+@Composable
+private fun ImportExcelView(vm: AppViewModel, onGoToCreate: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var message by remember { mutableStateOf("") }
+    var messageIsError by remember { mutableStateOf(false) }
+
+    val picker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            val stream = context.contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("Could not open file")
+            stream.use { ExcelQuestions.parse(it) }
+        }.onSuccess { parsed ->
+            vm.storeImportedQuestions(parsed)
+            message = "Imported ${parsed.size} questions from Excel."
+            messageIsError = false
+            onGoToCreate()
+        }.onFailure { e ->
+            message = e.message ?: "Error: Failed to parse Excel file. Check the format."
+            messageIsError = true
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(ArAccent.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("📄", fontSize = 26.sp)
+            }
+            Spacer(Modifier.height(12.dp))
+            Text("Import Questions", fontWeight = FontWeight.Black, fontSize = 18.sp, color = ArSlate800)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Upload an Excel file or download the template first",
+                fontSize = 13.sp,
+                color = ArSlate500
+            )
+            Spacer(Modifier.height(18.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                OutlineButton(
+                    text = "Cancel",
+                    modifier = Modifier.weight(1f),
+                    onClick = { message = "" }
+                )
+                Spacer(Modifier.width(8.dp))
+                PrimaryButton(
+                    text = "Download Template",
+                    modifier = Modifier.weight(1f),
+                    onClick = { downloadTemplate(context) { msg -> message = msg; messageIsError = false } }
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            GradientButton(text = "Upload File", modifier = Modifier.fillMaxWidth()) {
+                message = ""
+                picker.launch(
+                    arrayOf(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "application/vnd.ms-excel"
+                    )
+                )
+            }
+        }
+
+        if (message.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (messageIsError) ArRedLight else ArGreenLight)
+                    .padding(12.dp)
+            ) {
+                Text(message, color = if (messageIsError) ArRed else ArGreen, fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+private fun downloadTemplate(context: android.content.Context, onResult: (String) -> Unit) {
+    val name = "arinfotek-question-template.xlsx"
+    runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(
+                    MediaStore.MediaColumns.MIME_TYPE,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "Download")
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IllegalStateException("Could not create file")
+            resolver.openOutputStream(uri)?.use { ExcelQuestions.writeTemplate(it) }
+                ?: throw IllegalStateException("Could not write file")
+        } else {
+            val dir = context.getExternalFilesDir(null) ?: context.filesDir
+            val file = java.io.File(dir, name)
+            java.io.FileOutputStream(file).use { ExcelQuestions.writeTemplate(it) }
+        }
+    }.onSuccess {
+        onResult("Template saved: $name")
+    }.onFailure {
+        onResult("Error: " + (it.message ?: "Could not save template"))
+    }
+}
+
 private class EditableQuestion {
     var text by mutableStateOf("")
     val options = mutableStateListOf("", "", "", "")
     var correct by mutableStateOf(0)
+
+    companion object {
+        fun from(q: Question): EditableQuestion = EditableQuestion().apply {
+            text = q.questionText
+            q.options.take(4).forEachIndexed { i, o -> options[i] = o }
+            correct = q.correctAnswer.coerceIn(0, 3)
+        }
+    }
 }
 
 @Composable
