@@ -129,7 +129,7 @@ fun JoinScreen(
                 AppTextField(
                     value = code,
                     onValueChange = { code = it.uppercase() },
-                    placeholder = "e.g. APT01",
+                    placeholder = "e.g. ARPB248",
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Characters,
                         keyboardType = KeyboardType.Text

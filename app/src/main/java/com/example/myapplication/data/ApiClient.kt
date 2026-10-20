@@ -26,7 +26,7 @@ class ApiClient {
 
     val serializer: Json get() = json
 
-    private val baseUrl = "https://arinfotek-assesment.vercel.app/api"
+    private val baseUrl = "https://assessment.arinfotek.co.in/api"
 
     suspend fun <T> get(
         path: String,
@@ -47,28 +47,43 @@ class ApiClient {
         body: String?,
         deserializer: KSerializer<T>
     ): T = withContext(Dispatchers.IO) {
-        val url = buildUrl(path, query)
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.requestMethod = method
-        conn.connectTimeout = 30_000
-        conn.readTimeout = 90_000
-        conn.setRequestProperty("Accept", "application/json")
-        try {
-            if (body != null) {
-                conn.doOutput = true
-                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
+        var currentUrl = buildUrl(path, query)
+        var redirects = 0
+        while (true) {
+            val conn = URL(currentUrl).openConnection() as HttpURLConnection
+            conn.instanceFollowRedirects = false
+            conn.requestMethod = method
+            conn.connectTimeout = 30_000
+            conn.readTimeout = 90_000
+            conn.setRequestProperty("Accept", "application/json")
+            try {
+                if (body != null) {
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
+                }
+                val code = conn.responseCode
+                if (code in 300..399) {
+                    val location = conn.getHeaderField("Location")
+                    if (location.isNullOrBlank() || redirects++ >= 5) {
+                        throw ApiException(code, "Too many redirects")
+                    }
+                    // 307/308 preserve method + body; re-send on the new URL.
+                    currentUrl = location
+                    continue
+                }
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val text = stream?.bufferedReader()?.use(BufferedReader::readText).orEmpty()
+                if (code !in 200..299) {
+                    throw ApiException(code, text)
+                }
+                return@withContext json.decodeFromString(deserializer, text)
+            } finally {
+                conn.disconnect()
             }
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.bufferedReader()?.use(BufferedReader::readText).orEmpty()
-            if (code !in 200..299) {
-                error("HTTP $code: ${text.take(300)}")
-            }
-            json.decodeFromString(deserializer, text)
-        } finally {
-            conn.disconnect()
         }
+        @Suppress("UNREACHABLE_CODE")
+        error("unreachable")
     }
 
     private fun buildUrl(path: String, query: Map<String, String>): String {
@@ -83,4 +98,10 @@ class ApiClient {
         }
         return url.toString()
     }
+}
+
+/** Thrown when the API returns a non-2xx status. */
+class ApiException(val statusCode: Int, val body: String) :
+    Exception("HTTP $statusCode: ${body.take(300)}") {
+    val isNotFound: Boolean get() = statusCode == 404
 }

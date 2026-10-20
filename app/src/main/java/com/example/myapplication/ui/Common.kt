@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.Screen
@@ -102,46 +103,37 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(ArPrimary)
-            .padding(horizontal = 24.dp, vertical = 28.dp)
+            .padding(horizontal = 24.dp, vertical = 32.dp)
     ) {
         // Brand column
         Column {
             Text("AR INFOTEK", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 "Practical, mentor-led online IT training to accelerate your career.",
                 color = ArSlate300,
-                fontSize = 13.sp
+                fontSize = 14.sp,
+                lineHeight = 20.sp
             )
         }
 
-        Spacer(Modifier.height(20.dp))
-
-        // Programs + Company side by side
-        Row(modifier = Modifier.fillMaxWidth()) {
-            FooterSection(
-                title = "Programs",
-                items = listOf("AWS Architect", "Data Science", "DevOps"),
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.size(16.dp))
-            FooterSection(
-                title = "Company",
-                items = listOf("Why Us", "Internship", "Testimonials"),
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        // Legal
+        Spacer(Modifier.height(28.dp))
+        FooterSection(
+            title = "Programs",
+            items = listOf("AWS Architect", "Data Science", "DevOps")
+        )
+        Spacer(Modifier.height(28.dp))
+        FooterSection(
+            title = "Company",
+            items = listOf("Why Us", "Internship", "Testimonials")
+        )
+        Spacer(Modifier.height(28.dp))
         FooterSection(
             title = "Legal",
-            items = listOf("Terms", "Privacy"),
-            modifier = Modifier.fillMaxWidth()
+            items = listOf("Terms", "Privacy")
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(28.dp))
 
         // Bottom bar
         Box(
@@ -150,21 +142,21 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
                 .height(1.dp)
                 .background(Color.White.copy(alpha = 0.1f))
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(24.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("© 2025 AR INFOTEK - All rights reserved.", color = ArSlate400, fontSize = 11.sp)
+            Text("© 2025 AR INFOTEK - All rights reserved.", color = ArSlate400, fontSize = 12.sp)
             Spacer(Modifier.size(16.dp))
             Text(
                 text = if (screen == Screen.ADMIN) "Back to Test" else "Admin",
                 color = Color(0xFF7DD3FC),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
+                textDecoration = TextDecoration.Underline,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
                     .clickableNoRipple(onClick = onAdminClick)
                     .padding(2.dp)
             )
@@ -175,10 +167,15 @@ fun AppFooter(screen: Screen, onAdminClick: () -> Unit) {
 @Composable
 private fun FooterSection(title: String, items: List<String>, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        Text(title, color = ArAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        Spacer(Modifier.height(10.dp))
+        Text(title, color = ArAccent, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Spacer(Modifier.height(12.dp))
         items.forEach { item ->
-            Text(item, color = ArSlate200, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
+            Text(
+                item,
+                color = ArSlate200,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
         }
     }
 }

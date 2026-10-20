@@ -151,21 +151,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val upper = code.trim().uppercase()
         viewModelScope.launch {
             verifying = true
-            val remote = runCatching { api.fetchTestByCode(upper) }.getOrNull()
-            if (remote != null) {
-                val (test, questions) = remote
+            joinError = ""
+            val outcome = runCatching { api.fetchTestByCode(upper) }
+            verifying = false
+
+            outcome.getOrNull()?.let { (test, questions) ->
                 activeQuestions = questions
                 finishVerify(name, regId, test, onVerified)
                 return@launch
             }
-            // Offline / not found remotely: fall back to the local cache.
+
+            // If the request definitively said "not found", the code is wrong.
+            val failure = outcome.exceptionOrNull()
+            if (failure is ApiException && failure.isNotFound) {
+                // Try the locally cached test list (from /admin) as a tie-breaker.
+                val cached = data.tests.firstOrNull { it.testCode.equals(upper, ignoreCase = true) }
+                if (cached != null) {
+                    activeQuestions = data.questions.filter { it.testId == cached.id }
+                    finishVerify(name, regId, cached, onVerified)
+                } else {
+                    joinError = "Invalid test code"
+                    onVerified(false)
+                }
+                return@launch
+            }
+
+            // Network/other failure: fall back to whatever we cached.
             val cached = data.tests.firstOrNull { it.testCode.equals(upper, ignoreCase = true) }
             if (cached != null) {
                 activeQuestions = data.questions.filter { it.testId == cached.id }
                 finishVerify(name, regId, cached, onVerified)
             } else {
-                verifying = false
-                joinError = if (online) "Invalid test code" else "You're offline and this code isn't cached."
+                joinError = "Could not connect. Please check your internet and try again."
                 onVerified(false)
             }
         }
